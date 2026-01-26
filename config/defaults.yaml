@@ -1,0 +1,9 @@
+source:
+  type: Webcam
+  values:
+    int: 0
+model: yolov8n
+conf: 0.5
+fps: 15
+tracking: true
+classes: ["person"]

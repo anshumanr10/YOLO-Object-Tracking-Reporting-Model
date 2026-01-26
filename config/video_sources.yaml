@@ -1,0 +1,15 @@
+rtsp:
+  label: RTSP
+  url: "rtsp://host:8554/live"
+rtmp:
+  label: RTMP
+  url: "rtmp://host:1935/live/stream"
+http:
+  label: HTTP
+  url: "http://host:8080/video"
+webcam:
+  label: Webcam
+  index: 0
+file:
+  label: File
+  path: "/path/to/video.mp4"

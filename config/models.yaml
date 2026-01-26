@@ -1,0 +1,24 @@
+yolov8n:
+  weights: "yolov8n.pt"
+  size: nano
+  task: detect
+
+yolov8s:
+  weights: "yolov8s.pt"
+  size: small
+  task: detect
+
+yolov8m:
+  weights: "yolov8m.pt"
+  size: medium
+  task: detect
+
+yolov8l:
+  weights: "yolov8l.pt"
+  size: large
+  task: detect
+
+yolov8x:
+  weights: "yolov8x.pt"
+  size: xlarge
+  task: detect

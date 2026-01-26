@@ -1,0 +1,4 @@
+pip install -U pip wheel setuptools
+pip install "lap>=0.5.12"
+
+sudo apt install -y fontconfig fonts-dejavu
