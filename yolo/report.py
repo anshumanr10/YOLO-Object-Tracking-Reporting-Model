@@ -1,6 +1,15 @@
-def write_summary():
+from datetime import datetime
+from typing import Dict, Set, Any
+
+
+def write_summary(
+    frame_detection_counts: Dict[str, int],
+    unique_ids_by_class: Dict[str, set],
+    detected_classes: Set[str],
+    output_file: str = "detections_summary.txt",
+) -> str:
+    """Write a detection summary to a text file. Returns the output file path."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    output_file = "detections_summary.txt"
 
     with open(output_file, "w") as f:
         f.write("YOLO Detection Summary\n")
@@ -28,4 +37,18 @@ def write_summary():
         else:
             f.write("- None\n")
 
-    print(f"\nSummary written to {output_file}")
+    return output_file
+
+
+def summary_dict(
+    frame_detection_counts: Dict[str, int],
+    unique_ids_by_class: Dict[str, set],
+    detected_classes: Set[str],
+) -> Dict[str, Any]:
+    """Return the same summary as a dict (e.g. for JSON API responses)."""
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "frame_detection_counts": dict(frame_detection_counts),
+        "unique_tracked_by_class": {k: len(v) for k, v in unique_ids_by_class.items()},
+        "detected_classes": sorted(detected_classes),
+    }

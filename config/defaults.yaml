@@ -1,7 +1,7 @@
 source:
-  type: Webcam
+  type: RTSP
   values:
-    int: 0
+    url: rtsp://172.26.144.1:8554/live
 model: yolov8n
 conf: 0.5
 fps: 15

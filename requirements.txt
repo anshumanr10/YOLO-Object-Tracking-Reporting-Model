@@ -4,3 +4,4 @@ pydantic
 ultralytics
 opencv-python
 numpy
+python-multipart

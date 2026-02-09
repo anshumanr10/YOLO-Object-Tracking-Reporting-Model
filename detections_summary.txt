@@ -1,0 +1,12 @@
+YOLO Detection Summary
+======================
+Timestamp: 2026-02-09 15:01:32
+
+Frame-level detections (counts per frame):
+person: 100
+
+Unique tracked objects (by track ID):
+person: 1
+
+Detected classes:
+- person

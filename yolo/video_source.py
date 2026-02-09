@@ -30,9 +30,6 @@ if __name__ == "__main__":
     print(f"Running: {Path(__file__).resolve()}")
     
     ip = get_windows_host_ip()
-    cap = load_video_source({
-    "type": "RTSP",
-    "values": {"url": f"rtsp://{ip}:8554/live"}
-    })
+    cap = load_video_source()
     print("Successfully connected to video source.")
     cap.release()
