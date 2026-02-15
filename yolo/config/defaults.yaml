@@ -1,0 +1,8 @@
+# Use PiCamera for CSI camera on Pi (picamera2). Use Webcam for USB (e.g. values: { int: 0 }).
+source:
+  type: PiCamera
+model: yolov8n
+conf: 0.5
+fps: 15
+tracking: true
+classes: ["person"]

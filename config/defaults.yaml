@@ -1,9 +1,0 @@
-source:
-  type: RTSP
-  values:
-    url: rtsp://172.26.144.1:8554/live
-model: yolov8n
-conf: 0.5
-fps: 15
-tracking: true
-classes: ["person"]
