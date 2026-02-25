@@ -1,8 +1,11 @@
-fastapi
-uvicorn
-pydantic
-ultralytics
+# pi_cam_loader.py — pip deps (use with venv --system-site-packages for libcamera)
 opencv-python
-numpy
-python-multipart
-lap>=0.5.12
+picamera2
+
+# stream_server.py (FastAPI + WebSocket)
+fastapi
+uvicorn[standard]
+
+# webrtc_handler.py (WebRTC streaming)
+aiortc
+av

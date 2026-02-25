@@ -1,5 +1,0 @@
-# Upgrade pip and build tools (run once per env)
-pip install -U pip wheel setuptools
-
-# System packages (apt, not pip - cannot go in requirements.txt)
-sudo apt install -y fontconfig fonts-dejavu
