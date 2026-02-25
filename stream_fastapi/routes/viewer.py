@@ -1,22 +1,9 @@
-#!/usr/bin/env python3
-"""
-FastAPI app: serves a viewer page and WebSocket endpoint for WebRTC signaling.
-Uses webrtc_handler (aiortc + Picamera2) for the actual stream.
-"""
-
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
-from webrtc import handle_webrtc_connection, Picamera2Track
 
-app = FastAPI(title="Stream server")
+router = APIRouter()
 
-# Caller must supply the video source; no default track.
-CAMERA_INDEX = 0
-
-
-def _stream_track_factory():
-    return Picamera2Track(camera_index=CAMERA_INDEX)
 
 VIEWER_HTML = """
 <!DOCTYPE html>
@@ -76,20 +63,7 @@ VIEWER_HTML = """
 """
 
 
-@app.get("/", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 async def viewer_page():
     return VIEWER_HTML
 
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        await handle_webrtc_connection(websocket, track_factory=_stream_track_factory)
-    except WebSocketDisconnect:
-        pass
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

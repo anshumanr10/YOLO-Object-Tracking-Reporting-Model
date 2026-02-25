@@ -27,7 +27,7 @@ async def handle_webrtc_connection(
     Expects JSON messages: {"type": "offer", "sdp": "..."} and {"type": "ice", "candidate": {...}}.
     Sends back: {"type": "answer", "sdp": "..."} and {"type": "ice", "candidate": {...}}.
 
-    track_factory: callable that returns a VideoStreamTrack (e.g. Picamera2Track or mock).
+    track_factory: callable that returns a VideoStreamTrack.
     """
     pc = RTCPeerConnection()
     track: Optional[Any] = None

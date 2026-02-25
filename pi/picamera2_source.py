@@ -1,6 +1,6 @@
 """
-Picamera2 video track for WebRTC: captures frames in a background thread and
-feeds them to aiortc's VideoStreamTrack.
+Picamera2-backed video source for WebRTC: captures frames in a background
+thread and exposes them via an aiortc VideoStreamTrack subclass.
 """
 
 import asyncio
@@ -66,9 +66,9 @@ def select_sensor_and_main_size(picam2: Any, max_stream_size: tuple[int, int]) -
     return sensor_size, main_size
 
 
-class Picamera2Track(VideoStreamTrack):
+class Picamera2Source(VideoStreamTrack):
     """
-    Video track that feeds frames from Picamera2 into the WebRTC stream.
+    Video source that feeds frames from Picamera2 into the WebRTC video track.
     Runs the camera with NULL preview and a background thread that captures into a queue.
     """
 

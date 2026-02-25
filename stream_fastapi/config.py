@@ -1,0 +1,2 @@
+CAMERA_INDEX = 0
+

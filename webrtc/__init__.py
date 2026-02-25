@@ -1,9 +1,8 @@
 """
-WebRTC (aiortc) package: Picamera2 video track and signaling over WebSocket.
-Designed to be used by stream_server or any WebSocket server.
+WebRTC (aiortc) package: signaling over WebSocket and connection handling.
+Source-agnostic: callers supply a track factory that returns a VideoStreamTrack.
 """
 
 from webrtc.connection import handle_webrtc_connection
-from webrtc.track import Picamera2Track
 
-__all__ = ["handle_webrtc_connection", "Picamera2Track"]
+__all__ = ["handle_webrtc_connection"]
