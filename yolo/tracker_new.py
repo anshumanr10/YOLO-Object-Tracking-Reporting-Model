@@ -11,9 +11,13 @@ from . import video_output
 from . import report
 
 
-# Load config once and cache default classes.
+# Load config once and cache defaults from it.
 config.load_config()
 _DEFAULT_CLASS_NAMES: Optional[List[str]] = config.defaults.get("classes")
+_DEFAULT_MODEL_KEY: str = config.defaults["model"]
+_DEFAULT_CONF: float = float(config.defaults.get("conf", 0.5))
+_DEFAULT_PERSIST: bool = bool(config.defaults.get("tracking", True))
+_DEFAULT_TRACKER: str = "bytetrack.yaml"
 
 
 def get_target_class_ids(
@@ -28,11 +32,11 @@ def get_target_class_ids(
 
 def tracking_frames(
     frame_stream: Generator[Any, None, None],
-    model_key: Optional[str] = None,
-    conf: Optional[float] = None,
-    persist: bool = True,
-    tracker: str = "bytetrack.yaml",
-    classes: Optional[List[int]] = None,
+    model_key: str = _DEFAULT_MODEL_KEY,
+    conf: float = _DEFAULT_CONF,
+    persist: bool = _DEFAULT_PERSIST,
+    tracker: str = _DEFAULT_TRACKER,
+    classes: Optional[List[int]] = get_target_class_ids(),
     max_frames: Optional[int] = None,
     draw: bool = True,
 ) -> Generator[Tuple[Any, Any, Any], None, None]:
@@ -45,7 +49,7 @@ def tracking_frames(
     """
     model = model_setup.load_model(model_key)
     conf_val = model_setup.confidence_lvl(conf)
-    target_ids = classes if classes is not None else get_target_class_ids()
+    target_ids = classes
 
     frame_count = 0
     for frame in frame_stream:
@@ -70,11 +74,11 @@ def tracking_frames(
 
 def run_tracking(
     frame_stream: Generator[Any, None, None],
-    model_key: Optional[str] = None,
-    conf: Optional[float] = None,
-    persist: bool = True,
-    tracker: str = "bytetrack.yaml",
-    classes: Optional[List[int]] = None,
+    model_key: str = _DEFAULT_MODEL_KEY,
+    conf: float = _DEFAULT_CONF,
+    persist: bool = _DEFAULT_PERSIST,
+    tracker: str = _DEFAULT_TRACKER,
+    classes: Optional[List[int]] = get_target_class_ids(),
     write_summary_file: bool = False,
     summary_path: str = "detections_summary.txt",
     show_display: bool = False,

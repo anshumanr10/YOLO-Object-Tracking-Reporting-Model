@@ -7,7 +7,7 @@ import asyncio
 import logging
 import queue
 import threading
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import cv2
 import numpy as np
@@ -18,6 +18,15 @@ try:
     from aiortc.exceptions import MediaStreamError
 except ImportError:
     MediaStreamError = Exception  # type: ignore[misc, assignment]
+
+from yolo.tracker_new import (
+    _DEFAULT_CONF,
+    _DEFAULT_MODEL_KEY,
+    _DEFAULT_PERSIST,
+    _DEFAULT_TRACKER,
+    get_target_class_ids,
+)
+from yolo.model import _DEFAULT_FPS
 
 logger = logging.getLogger(__name__)
 
@@ -33,21 +42,21 @@ class TrackingVideoTrack(VideoStreamTrack):
     def __init__(
         self,
         camera_index: int = 0,
-        target_fps: int = 30,
+        target_fps: Optional[int] = None,
         model_key: Optional[str] = None,
         conf: Optional[float] = None,
-        persist: bool = True,
-        tracker: str = "bytetrack.yaml",
-        classes: Optional[list] = None,
+        persist: Optional[bool] = None,
+        tracker: Optional[str] = None,
+        classes: Optional[List[int]] = None,
     ) -> None:
         super().__init__()
         self._camera_index = camera_index
-        self._target_fps = target_fps
-        self._model_key = model_key
-        self._conf = conf
-        self._persist = persist
-        self._tracker = tracker
-        self._classes = classes
+        self._target_fps = target_fps if target_fps is not None else _DEFAULT_FPS
+        self._model_key = model_key if model_key is not None else _DEFAULT_MODEL_KEY
+        self._conf = conf if conf is not None else _DEFAULT_CONF
+        self._persist = persist if persist is not None else _DEFAULT_PERSIST
+        self._tracker = tracker if tracker is not None else _DEFAULT_TRACKER
+        self._classes = classes if classes is not None else get_target_class_ids()
         self._frame_queue: queue.Queue = queue.Queue(maxsize=2)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
