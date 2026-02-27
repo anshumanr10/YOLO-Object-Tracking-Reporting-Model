@@ -1,0 +1,176 @@
+# LLM Context: YOLO Tracking WebRTC Stream - Chat Session Summary
+
+This document summarizes the actions, decisions, and outcomes from a chat session focused on adding a YOLO tracking stream to a FastAPI + WebRTC application, and subsequent troubleshooting of a PyTorch compatibility issue on Raspberry Pi 4.
+
+---
+
+## 1. Project Overview
+
+**Repository:** YOLO-Object-Tracking-Reporting-Model
+
+**Existing setup:**
+- FastAPI app in `stream_fastapi/` (entry point: `main.py`)
+- Raw Pi camera stream via WebRTC: page at `/` connects to WebSocket `/ws`, which uses `handle_webrtc_connection()` with a track factory returning `Picamera2Source` (from `pi/picamera2_source.py`)
+- `Picamera2Source` is an aiortc `VideoStreamTrack` that captures from Picamera2 in a background thread, queues RGB frames, and returns them via `recv()` as `VideoFrame`
+- YOLO tracking pipeline: `yolo/tracker_new.py` is the entry point; it exposes `tracking_frames(frame_stream, ...)` which consumes a sync generator of BGR frames, runs YOLO `model.track()`, optionally draws via `yolo/video_output.draw_detections()`, and yields `(frame, results, model)`
+- Frame source for tracking: `yolo/pi_source.picamera2_frame_stream()` - sync generator of BGR frames from Picamera2
+
+**User request:** Create another FastAPI page that uses `tracker_new` and outputs its stream via WebRTC.
+
+---
+
+## 2. Architecture Decisions (Pre-Implementation)
+
+**Conventions established:**
+- `webrtc/` folder: generic modules only (connection, signaling, ICE). No project-specific code. Downstream components import from webrtc.
+- `yolo/` folder: YOLO tracking modules only. No WebRTC or FastAPI. Components that need "camera + tracking + WebRTC" live elsewhere and import from yolo.
+- New WebRTC track implementation: must live in the **same folder as the first implementation** (`pi/picamera2_source.py`), i.e. in `pi/`
+- WebSocket endpoints: can be in the same file (`stream_fastapi/routes/websocket.py`) as long as they don't both get triggered together (single camera constraint)
+- Tracking stream page: must be on a **separate page** (e.g. `/tracking`) so the raw stream (`/`) is not triggered when the user wants tracking
+
+**Pipeline connection:**
+- Pi camera → `picamera2_frame_stream()` (sync generator, BGR) → `tracking_frames(..., draw=True)` (sync generator) → annotated BGR frames
+- A background thread runs that generator and puts each annotated frame (BGR→RGB) into a queue
+- A new `VideoStreamTrack` subclass's `recv()` reads from the queue and returns a `VideoFrame`
+- Flow: **Pi camera → tracker_new pipeline (sync) → queue → VideoStreamTrack.recv() → WebRTC**
+
+---
+
+## 3. Implementation Performed
+
+**3.1 Created `pi/tracking_source.py`**
+- Defines `TrackingVideoTrack` (aiortc `VideoStreamTrack` subclass)
+- Constructor accepts: `camera_index`, `target_fps`, and optional tracker args (`model_key`, `conf`, `persist`, `tracker`, `classes`)
+- Background thread runs: `picamera2_frame_stream()` → `tracking_frames(..., draw=True)` → for each BGR frame, converts to RGB and puts in a bounded queue (maxsize=2)
+- `recv()`: waits for frame from queue, wraps in `VideoFrame.from_ndarray(..., "rgb24")`, sets pts/time_base, returns
+- `stop()`: sets stop event so the tracking loop exits; generators are closed and camera is released
+- Imports from `yolo.pi_source` and `yolo.tracker_new`; does NOT add WebRTC-specific code to yolo/
+
+**3.2 Updated `stream_fastapi/routes/websocket.py`**
+- Added import: `from pi.tracking_source import TrackingVideoTrack`
+- Added `_tracking_track_factory()` returning `TrackingVideoTrack(camera_index=CAMERA_INDEX)`
+- Added `@router.websocket("/ws-tracking")` endpoint that accepts WebSocket and calls `handle_webrtc_connection(websocket, track_factory=_tracking_track_factory)`
+- Existing `/ws` endpoint unchanged (raw stream)
+
+**3.3 Created `stream_fastapi/routes/tracking_viewer.py`**
+- Serves HTML page at `GET /tracking`
+- Page connects to WebSocket `ws://${location.host}/ws-tracking` (not `/ws`)
+- Same WebRTC client logic as raw viewer: RTCPeerConnection, addTransceiver("video", recvonly), createOffer, send offer, receive answer/ICE, display track on `<video>` element
+- Title/heading: "Tracking stream"
+
+**3.4 Updated `stream_fastapi/__init__.py` and `stream_fastapi/routes/__init__.py`**
+- Included `tracking_viewer.router` in the FastAPI app
+- Exported `tracking_viewer` in routes `__all__`
+
+**Usage:**
+- Raw camera: open `/` → connects to `/ws` → `Picamera2Source`
+- Tracking: open `/tracking` → connects to `/ws-tracking` → `TrackingVideoTrack`
+- Only one page should be used at a time (single camera cannot support two simultaneous tracks)
+
+---
+
+## 4. PyTorch "Illegal Instruction" Issue
+
+**Symptom:** When a client connects to `/ws-tracking`, the server crashes with "Illegal instruction" (exit code 132 = SIGILL).
+
+**Diagnosis performed:**
+1. Minimal PyTorch test: `python -c "import torch; x = torch.zeros(1,1); print('torch OK')"` → **Illegal instruction**
+2. Model load test: `from yolo.model import load_model; m = load_model()` → **Illegal instruction**
+3. Inference test: `m.track(np.zeros((480,640,3), dtype=np.uint8))` → **Illegal instruction**
+
+**Conclusion:** The crash occurs in **PyTorch itself** (even before model load or inference). Not a bug in the FastAPI/WebRTC/tracking code.
+
+**Environment:**
+- Raspberry Pi 4B, aarch64, Cortex-A72
+- Debian Trixie (testing)
+- glibc 2.41
+- Python 3.13
+- PyTorch 2.10.0 (from piwheels and from https://download.pytorch.org/whl/cpu)
+- Both sources provide `manylinux_2_28_aarch64` wheels
+
+**Root cause hypothesis:** The manylinux_2_28 aarch64 wheels use CPU instructions (e.g. ARMv8.2+ features) that the Cortex-A72 (ARMv8-A) does not support.
+
+---
+
+## 5. Attempted Fixes (Unsuccessful)
+
+1. **Reinstall from PyTorch official CPU index:** `pip install --force-reinstall torch torchvision --no-cache-dir --index-url https://download.pytorch.org/whl/cpu` → Same crash
+2. **Reinstall from piwheels:** Same crash
+3. **Older PyTorch versions:** `pip install torch==2.1.0`, `torch==2.0.1`, `torch==1.13.1` → **Not available** for Python 3.13 on aarch64. piwheels only has 2.6.0, 2.7.x, 2.8.0, 2.9.x, 2.10.0.
+
+---
+
+## 6. Recommended Solution: Python 3.11 or 3.12
+
+**Rationale:** Older Python versions (3.11, 3.12) typically have PyTorch wheels built for manylinux_2_17 or similar, which target older ARM cores and avoid the problematic instructions. Python 3.13 is very new; all cp313 aarch64 wheels appear to use manylinux_2_28.
+
+**Implementation:**
+1. Install Python 3.12 (or 3.11 if available)
+2. Create a new venv with that Python
+3. Install project dependencies and PyTorch/Ultralytics in the new venv
+4. Use that venv for the project
+
+**System constraint:** On Debian Trixie, `python3.12` and `python3.11` are **not available** via apt (no apt package found). The user must use an alternative method to obtain Python 3.12.
+
+---
+
+## 7. Alternative: pyenv to Install Python 3.12
+
+Since apt does not provide Python 3.12 on Debian Trixie, the recommended approach is to use **pyenv**:
+
+```bash
+# Install build dependencies
+sudo apt install -y build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev curl libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+
+# Install pyenv
+curl https://pyenv.run | bash
+echo 'export PATH="$HOME/.pyenv/bin:$PATH"' >> ~/.bashrc
+echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+source ~/.bashrc
+
+# Install Python 3.12 (builds from source, ~30-60 min on Pi 4)
+pyenv install 3.12.7
+
+# Create venv and install deps
+cd /home/pi/Github-Repos/YOLO-Object-Tracking-Reporting-Model
+~/.pyenv/versions/3.12.7/bin/python -m venv venv312
+source venv312/bin/activate
+pip install -r requirements.txt
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install ultralytics
+
+# Test
+python -c "import torch; x = torch.zeros(1,1); print('torch OK')"
+```
+
+If that prints "torch OK", the tracking stream should work at `/tracking`.
+
+---
+
+## 8. Other Notes
+
+- **pandas-stubs:** Installed to resolve a pip dependency conflict warning: `types-seaborn 0.13.2 requires pandas-stubs`. Not required for runtime.
+- **Raw stream (`/`):** Works; it does not use YOLO/PyTorch. Only the tracking stream (`/tracking`) triggers the crash.
+- **Single-camera:** If both `/` and `/tracking` are opened in separate tabs and both connect, two tracks would try to use the camera. The architecture avoids this by having separate pages; users choose one or the other. Server-side single-camera locking could be added later if needed.
+
+---
+
+## 9. File Summary
+
+| File | Action |
+|------|--------|
+| `pi/tracking_source.py` | New - TrackingVideoTrack implementation |
+| `stream_fastapi/routes/websocket.py` | Modified - Added /ws-tracking endpoint |
+| `stream_fastapi/routes/tracking_viewer.py` | New - /tracking page |
+| `stream_fastapi/__init__.py` | Modified - Include tracking_viewer router |
+| `stream_fastapi/routes/__init__.py` | Modified - Export tracking_viewer |
+| `webrtc/` | Unchanged - Generic only |
+| `yolo/` | Unchanged - Tracking only |
+
+---
+
+## 10. Status
+
+- **Tracking stream implementation:** Complete and correct
+- **Runtime:** Blocked by PyTorch compatibility on Pi 4B with Python 3.13
+- **Next step:** User should run the pyenv + Python 3.12 setup and re-test with the new venv

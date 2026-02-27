@@ -1,14 +1,21 @@
 from pathlib import Path
 import time
-from typing import Any
+from typing import Any, Dict
 
 import cv2
+
 from . import config_loader as config
 from .picam_adapter import PiCameraAdapter
 
 
+# Load config once and capture default source spec.
+config.load_config()
+_DEFAULT_SOURCE: Dict[str, Any] = config.defaults["source"]
+
+
 class VideoSource:
     """Single type returned by load_video_source. Same interface for cv2 and Pi camera: read(), release(), get(), isOpened()."""
+
     def __init__(self, cap: Any) -> None:
         self._cap = cap
 
@@ -25,13 +32,8 @@ class VideoSource:
         return self._cap.get(prop)
 
 
-def load_video_source(video_source: dict | None = None) -> VideoSource:
-    if video_source is None:
-        config.load_config()
-        src = config.defaults["source"]
-    else:
-        src = video_source
-
+def load_video_source(video_source: Dict[str, Any] = _DEFAULT_SOURCE) -> VideoSource:
+    src = video_source
     src_type = src["type"]
     src_vals = src.get("values") or {}
     if src_type == "Webcam":
@@ -47,6 +49,7 @@ def load_video_source(video_source: dict | None = None) -> VideoSource:
     if not cap.isOpened():
         raise RuntimeError(f"Failed to open video source: type={src_type}, values={src_vals}")
     return VideoSource(cap)
+
 
 if __name__ == "__main__":
     print(f"Running: {Path(__file__).resolve()}")

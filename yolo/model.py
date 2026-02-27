@@ -1,35 +1,31 @@
 from pathlib import Path
+from ultralytics import YOLO  # type: ignore
 from . import config_loader as config
-from ultralytics import YOLO # type: ignore
 
-def load_model(model: str | None = None) -> YOLO:
-    if not model:
-        config.load_config()
-    
-    key = model or config.defaults["model"]
-    spec = config.models[key]
+
+# Load config once at import time so functions can just read from it.
+config.load_config()
+
+_DEFAULT_MODEL: str = config.defaults["model"]
+_DEFAULT_CONF: float = float(config.defaults["conf"])
+_DEFAULT_FPS: int = int(config.defaults["fps"])
+_DEFAULT_TRACKING: bool = bool(config.defaults["tracking"])
+
+def load_model(model: str = _DEFAULT_MODEL) -> YOLO:
+    spec = config.models[model]
     return YOLO(spec["weights"])
 
-def confidence_lvl(confidence: float | None = None) -> float:
-    if confidence is None:
-        config.load_config()
-        confidence = config.defaults["conf"]
+def confidence_lvl(confidence: float = _DEFAULT_CONF) -> float:
     if not isinstance(confidence, (int, float)) or not (0.0 <= confidence <= 1.0):
         raise ValueError("confidence must be between 0.0 and 1.0")
     return float(confidence)
 
-def fps_limit(fps: int | None = None) -> int:
-    if fps is None:
-        config.load_config()
-        fps = config.defaults["fps"]
+def fps_limit(fps: int = _DEFAULT_FPS) -> int:
     if not isinstance(fps, int) or not (1 <= fps <= 60):
         raise ValueError("FPS must be between 1 and 60")
     return int(fps)
 
-def tracking_enabled(tracking: bool | None = None) -> bool:
-    if tracking is None:
-        config.load_config()
-        tracking = config.defaults["tracking"]
+def tracking_enabled(tracking: bool = _DEFAULT_TRACKING) -> bool:
     if not isinstance(tracking, bool):
         raise ValueError("Tracking must be a boolean")
     return bool(tracking)
