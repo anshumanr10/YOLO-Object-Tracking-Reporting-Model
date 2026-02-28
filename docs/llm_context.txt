@@ -12,10 +12,10 @@ This document summarizes the actions, decisions, and outcomes from a chat sessio
 - FastAPI app in `stream_fastapi/` (entry point: `main.py`)
 - Raw Pi camera stream via WebRTC: page at `/` connects to WebSocket `/ws`, which uses `handle_webrtc_connection()` with a track factory returning `Picamera2Source` (from `pi/picamera2_source.py`)
 - `Picamera2Source` is an aiortc `VideoStreamTrack` that captures from Picamera2 in a background thread, queues RGB frames, and returns them via `recv()` as `VideoFrame`
-- YOLO tracking pipeline: `yolo/tracker_new.py` is the entry point; it exposes `tracking_frames(frame_stream, ...)` which consumes a sync generator of BGR frames, runs YOLO `model.track()`, optionally draws via `yolo/video_output.draw_detections()`, and yields `(frame, results, model)`
-- Frame source for tracking: `yolo/pi_source.picamera2_frame_stream()` - sync generator of BGR frames from Picamera2
+- YOLO tracking pipeline: `yolo/tracker.py` is the entry point; it exposes `tracking_frames(frame_stream, ...)` which consumes a sync generator of BGR frames, runs YOLO `model.track()`, optionally draws via `yolo/video_output.draw_detections()`, and yields `(frame, results, model)`
+- Frame source for tracking: `yolo/source_picamera.picamera2_frame_stream()` - sync generator of BGR frames from Picamera2
 
-**User request:** Create another FastAPI page that uses `tracker_new` and outputs its stream via WebRTC.
+**User request:** Create another FastAPI page that uses `tracker` and outputs its stream via WebRTC.
 
 ---
 
@@ -32,7 +32,7 @@ This document summarizes the actions, decisions, and outcomes from a chat sessio
 - Pi camera → `picamera2_frame_stream()` (sync generator, BGR) → `tracking_frames(..., draw=True)` (sync generator) → annotated BGR frames
 - A background thread runs that generator and puts each annotated frame (BGR→RGB) into a queue
 - A new `VideoStreamTrack` subclass's `recv()` reads from the queue and returns a `VideoFrame`
-- Flow: **Pi camera → tracker_new pipeline (sync) → queue → VideoStreamTrack.recv() → WebRTC**
+- Flow: **Pi camera → tracker pipeline (sync) → queue → VideoStreamTrack.recv() → WebRTC**
 
 ---
 
@@ -44,7 +44,7 @@ This document summarizes the actions, decisions, and outcomes from a chat sessio
 - Background thread runs: `picamera2_frame_stream()` → `tracking_frames(..., draw=True)` → for each BGR frame, converts to RGB and puts in a bounded queue (maxsize=2)
 - `recv()`: waits for frame from queue, wraps in `VideoFrame.from_ndarray(..., "rgb24")`, sets pts/time_base, returns
 - `stop()`: sets stop event so the tracking loop exits; generators are closed and camera is released
-- Imports from `yolo.pi_source` and `yolo.tracker_new`; does NOT add WebRTC-specific code to yolo/
+- Imports from `yolo.source_picamera` and `yolo.tracker`; does NOT add WebRTC-specific code to yolo/
 
 **3.2 Updated `stream_fastapi/routes/websocket.py`**
 - Added import: `from pi.tracking_source import TrackingVideoTrack`

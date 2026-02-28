@@ -7,7 +7,6 @@ from ultralytics import YOLO  # type: ignore
 
 from . import config_loader as config
 from . import model as model_setup
-from . import video_source
 from . import video_output
 from . import report
 
@@ -19,7 +18,6 @@ _DEFAULT_MODEL_KEY: str = config.defaults["model"]
 _DEFAULT_CONF: float = float(config.defaults.get("conf", 0.5))
 _DEFAULT_PERSIST: bool = bool(config.defaults.get("tracking", True))
 _DEFAULT_TRACKER: str = "bytetrack.yaml"
-_DEFAULT_VIDEO_SOURCE_SPEC: Dict[str, Any] = config.defaults["source"]
 
 
 def get_target_class_ids(
@@ -33,7 +31,7 @@ def get_target_class_ids(
 
 
 def tracking_frames(
-    video_source_spec: Dict[str, Any] = _DEFAULT_VIDEO_SOURCE_SPEC,
+    frame_stream: Generator[Any, None, None],
     model_key: str = _DEFAULT_MODEL_KEY,
     conf: float = _DEFAULT_CONF,
     persist: bool = _DEFAULT_PERSIST,
@@ -43,46 +41,39 @@ def tracking_frames(
     draw: bool = True,
 ) -> Generator[Tuple[Any, Any, Any], None, None]:
     """
-    Single loop: read frame -> track -> optionally draw -> yield (frame, results, model).
-    Caller can aggregate stats (run_tracking) using model.names, or encode and stream (e.g. MJPEG).
+    Single loop: consume frames from an existing stream -> track -> optionally draw
+    -> yield (frame, results, model).
+
+    The frame_stream is typically provided by yolo.source_picamera.picamera2_frame_stream,
+    but any generator yielding OpenCV BGR frames is acceptable.
     """
     model = model_setup.load_model(model_key)
     conf_val = model_setup.confidence_lvl(conf)
     target_ids = classes
 
-    cap = video_source.load_video_source(video_source_spec)
-    if not cap.isOpened():
-        raise RuntimeError("Video source failed to open")
-
     frame_count = 0
-    try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if max_frames is not None and frame_count >= max_frames:
-                break
+    for frame in frame_stream:
+        if max_frames is not None and frame_count >= max_frames:
+            break
 
-            results = model.track(
-                frame,
-                conf=conf_val,
-                iou=0.7,
-                persist=persist,
-                tracker=tracker,
-                classes=target_ids,
-                verbose=False,
-            )
-            r = results[0]
-            if draw:
-                video_output.draw_detections(frame, r, model)
-            yield (frame, results, model)
-            frame_count += 1
-    finally:
-        cap.release()
+        results = model.track(
+            frame,
+            conf=conf_val,
+            iou=0.7,
+            persist=persist,
+            tracker=tracker,
+            classes=target_ids,
+            verbose=False,
+        )
+        r = results[0]
+        if draw:
+            video_output.draw_detections(frame, r, model)
+        yield (frame, results, model)
+        frame_count += 1
 
 
 def run_tracking(
-    video_source_spec: Dict[str, Any] = _DEFAULT_VIDEO_SOURCE_SPEC,
+    frame_stream: Generator[Any, None, None],
     model_key: str = _DEFAULT_MODEL_KEY,
     conf: float = _DEFAULT_CONF,
     persist: bool = _DEFAULT_PERSIST,
@@ -94,8 +85,11 @@ def run_tracking(
     max_frames: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    Run YOLO tracking on a video source. Returns a stats dict suitable for API or report.
-    Uses tracking_frames() as the single loop; aggregates stats and optionally shows a window.
+    Run YOLO tracking on an existing frame generator. Returns a stats dict
+    suitable for API or report.
+
+    Uses tracking_frames() as the single loop; aggregates stats and optionally
+    shows a window.
     """
     frame_detection_counts: Dict[str, int] = defaultdict(int)
     unique_ids_by_class: Dict[str, Set[int]] = defaultdict(set)
@@ -103,7 +97,7 @@ def run_tracking(
     frame_count = 0
 
     for frame, results, model in tracking_frames(
-        video_source_spec=video_source_spec,
+        frame_stream=frame_stream,
         model_key=model_key,
         conf=conf,
         persist=persist,
@@ -150,10 +144,15 @@ def run_tracking(
 
 
 if __name__ == "__main__":
+    from .source_picamera import picamera2_frame_stream
+
     print(f"Running: {Path(__file__).resolve()}")
+    stream = picamera2_frame_stream()
     stats = run_tracking(
+        frame_stream=stream,
         show_display=True,
         write_summary_file=True,
     )
     print("Tracking finished.")
     print("Summary:", stats)
+

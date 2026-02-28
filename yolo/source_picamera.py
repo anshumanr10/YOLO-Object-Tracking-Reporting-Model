@@ -1,14 +1,13 @@
 """
-Picamera2-backed video source for YOLO: opens the camera with the same
-configuration logic as `pi/picamera2_source.py`, but exposes a synchronous
-stream of frames suitable for passing directly to `YOLO.track(...)`.
+Picamera2-backed video source for YOLO: opens the camera and exposes a
+synchronous stream of BGR frames suitable for passing directly to `YOLO.track(...)`.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from typing import Generator, Any
+from typing import Any, Generator
 
 import cv2
 import numpy as np
@@ -18,12 +17,48 @@ try:
 except ImportError:
     Picamera2 = None  # type: ignore[misc, assignment]
 
-from pi.picamera2_source import select_sensor_and_main_size
-
 logger = logging.getLogger(__name__)
 
-# Keep stream size consistent with `picamera2_source.py`
 _MAX_STREAM_SIZE = (1920, 1080)
+
+
+def _select_sensor_and_main_size(
+    picam2: Any, max_stream_size: tuple[int, int]
+) -> tuple[tuple[int, int], tuple[int, int]]:
+    """
+    Given a Picamera2 instance and a maximum stream size (width, height),
+    select the largest available sensor mode and compute a main stream size
+    that fits within max_stream_size while preserving aspect ratio.
+    """
+    modes = getattr(picam2, "sensor_modes", None)
+    sensor_size: tuple[int, int] | None = None
+
+    if modes:
+        try:
+            def _area(m: Any) -> int:
+                size = m.get("size") or (0, 0)
+                return int(size[0]) * int(size[1])
+
+            best_mode = max(modes, key=_area)
+            size = best_mode.get("size")
+            if size:
+                sensor_size = (int(size[0]), int(size[1]))
+        except Exception:
+            sensor_size = None
+
+    if not sensor_size:
+        size = picam2.camera_properties.get("PixelArraySize", (640, 480))
+        sensor_size = (int(size[0]), int(size[1]))
+
+    max_w, max_h = max_stream_size
+    w, h = sensor_size
+    if w <= 0 or h <= 0:
+        main_size = (640, 480)
+    else:
+        r = min(max_w / w, max_h / h, 1.0)
+        main_size = (int(w * r), int(h * r))
+
+    return sensor_size, main_size
 
 
 def picamera2_frame_stream(
@@ -33,8 +68,7 @@ def picamera2_frame_stream(
     """
     Yield BGR frames from Picamera2 for use with YOLO.
 
-    - Configures Picamera2 sensor/main size via select_sensor_and_main_size,
-      matching the WebRTC stream configuration.
+    - Configures Picamera2 sensor/main size for the requested stream size.
     - Converts captured RGB arrays to BGR numpy arrays for OpenCV / YOLO.
     """
     if Picamera2 is None:
@@ -43,7 +77,7 @@ def picamera2_frame_stream(
     picam2: Any | None = None
     try:
         picam2 = Picamera2(camera_index)
-        sensor_size, main_size = select_sensor_and_main_size(picam2, _MAX_STREAM_SIZE)
+        sensor_size, main_size = _select_sensor_and_main_size(picam2, _MAX_STREAM_SIZE)
 
         config = picam2.create_preview_configuration(
             main={"size": main_size},

@@ -5,7 +5,7 @@ import sys
 import cv2
 from picamera2 import Picamera2
 
-OUTPUT_FILE = "open_pi_camera_capture.jpg"
+OUTPUT_FILE = "test_picamera_capture.jpg"
 
 def main():
     print("Opening Pi camera...")

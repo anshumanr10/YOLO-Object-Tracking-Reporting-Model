@@ -1,10 +1,10 @@
 """
-cv_source
----------
+source_opencv
+-------------
 
 Generator-based video source for any OpenCV-compatible capture object.
 
-This mirrors `yolo/pi_source.py`, but instead of configuring Picamera2
+This mirrors `yolo/source_picamera.py`, but instead of configuring Picamera2
 directly, it consumes an existing cv2-compatible source (e.g.
 `cv2.VideoCapture`, RTSP/RTMP stream, file, or a custom adapter with a
 `read()` / `isOpened()` / `release()` API).
