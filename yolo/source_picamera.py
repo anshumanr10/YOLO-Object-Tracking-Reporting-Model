@@ -19,16 +19,24 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Maximum (width, height) for the main stream; used to cap resolution while preserving aspect ratio.
 _MAX_STREAM_SIZE = (1920, 1080)
 
 
 def _select_sensor_and_main_size(
     picam2: Any, max_stream_size: tuple[int, int]
 ) -> tuple[tuple[int, int], tuple[int, int]]:
-    """
-    Given a Picamera2 instance and a maximum stream size (width, height),
-    select the largest available sensor mode and compute a main stream size
+    """Select sensor mode and main stream size for Picamera2.
+
+    Chooses the largest available sensor mode and computes a main stream size
     that fits within max_stream_size while preserving aspect ratio.
+
+    Args:
+        picam2: Configured Picamera2 instance (may have sensor_modes).
+        max_stream_size: Maximum (width, height) for the main stream.
+
+    Returns:
+        A pair (sensor_size, main_size), each (width, height).
     """
     modes = getattr(picam2, "sensor_modes", None)
     sensor_size: tuple[int, int] | None = None
@@ -36,6 +44,7 @@ def _select_sensor_and_main_size(
     if modes:
         try:
             def _area(m: Any) -> int:
+                """Return pixel area for a sensor mode dict with a 'size' key."""
                 size = m.get("size") or (0, 0)
                 return int(size[0]) * int(size[1])
 
@@ -64,12 +73,26 @@ def _select_sensor_and_main_size(
 def picamera2_frame_stream(
     camera_index: int = 0,
     target_fps: int = 30,
+    sensor_mode_index: int | None = None,
 ) -> Generator[np.ndarray, None, None]:
-    """
-    Yield BGR frames from Picamera2 for use with YOLO.
+    """Yield BGR frames from Picamera2 for use with YOLO.
 
-    - Configures Picamera2 sensor/main size for the requested stream size.
-    - Converts captured RGB arrays to BGR numpy arrays for OpenCV / YOLO.
+    Configures Picamera2 sensor and main size (capped by internal max stream size),
+    converts captured RGB to BGR numpy arrays for OpenCV/YOLO, and yields frames
+    at approximately target_fps. The camera is started on first iteration and
+    stopped when the generator is closed or exhausted.
+
+    Args:
+        camera_index: Picamera2 camera index (default 0).
+        target_fps: Desired frame rate; 0 means no sleep between frames.
+        sensor_mode_index: If set, use this index into sensor_modes; otherwise
+            the largest available sensor mode is selected.
+
+    Yields:
+        np.ndarray: BGR frames (H, W, 3), suitable for YOLO.track() or OpenCV.
+
+    Raises:
+        RuntimeError: If picamera2 is not installed.
     """
     if Picamera2 is None:
         raise RuntimeError("picamera2 is not installed")
@@ -77,7 +100,29 @@ def picamera2_frame_stream(
     picam2: Any | None = None
     try:
         picam2 = Picamera2(camera_index)
-        sensor_size, main_size = _select_sensor_and_main_size(picam2, _MAX_STREAM_SIZE)
+        # If a specific sensor mode was requested, honor its size; otherwise
+        # fall back to automatic selection.
+        sensor_size: tuple[int, int]
+        main_size: tuple[int, int]
+
+        modes = getattr(picam2, "sensor_modes", None) or []
+        mode = None
+        if sensor_mode_index is not None and 0 <= sensor_mode_index < len(modes):
+            mode = modes[sensor_mode_index]
+
+        if mode is not None:
+            sensor_size = tuple(mode.get("size", (640, 480)))  # type: ignore[assignment]
+            w, h = sensor_size
+            max_w, max_h = _MAX_STREAM_SIZE
+            if w <= 0 or h <= 0:
+                main_size = (640, 480)
+            else:
+                r = min(max_w / w, max_h / h, 1.0)
+                main_size = (int(w * r), int(h * r))
+        else:
+            sensor_size, main_size = _select_sensor_and_main_size(
+                picam2, _MAX_STREAM_SIZE
+            )
 
         config = picam2.create_preview_configuration(
             main={"size": main_size},
@@ -107,9 +152,9 @@ def picamera2_frame_stream(
         if picam2 is not None:
             try:
                 picam2.stop()
+                picam2.close()
             except Exception:
                 pass
-
 
 if __name__ == "__main__":
     # Simple smoke test: read a few frames and print their shape.

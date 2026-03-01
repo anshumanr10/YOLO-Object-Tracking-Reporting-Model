@@ -3,6 +3,6 @@ source:
   type: PiCamera
 model: yolov8n
 conf: 0.5
-fps: 5
+fps: 30
 tracking: true
 classes: ["person"]

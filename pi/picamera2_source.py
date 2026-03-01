@@ -29,6 +29,52 @@ except ImportError:
 _MAX_STREAM_SIZE = (1920, 1080)
 
 
+def list_cameras() -> list:
+    """Return list of camera info dicts from Picamera2.global_camera_info()."""
+    if Picamera2 is None:
+        raise RuntimeError("picamera2 is not installed")
+    info = Picamera2.global_camera_info()
+    cameras = []
+    for index, cam in enumerate(info or []):
+        cameras.append({
+            "index": index,
+            "model": cam.get("Model", "Unknown"),
+            "location": cam.get("Location", "Unknown"),
+            "rotation": cam.get("Rotation", "Unknown"),
+            "id": cam.get("Id", "Unknown"),
+        })
+    return cameras
+
+
+def list_sensor_modes(camera_index: int) -> list:
+    """Return sensor modes for the given camera index. Caller must not hold the camera open long."""
+    if Picamera2 is None:
+        raise RuntimeError("picamera2 is not installed")
+    picam2 = Picamera2(camera_index)
+    try:
+        modes = getattr(picam2, "sensor_modes", None) or []
+        out = []
+        for idx, mode in enumerate(modes):
+            size = mode.get("size", (0, 0))
+            fps = float(mode.get("fps", 0))
+            bit_depth = int(mode.get("bit_depth", 0))
+            fmt = mode.get("format", "")
+            fmt_str = str(fmt)
+            out.append({
+                "index": idx,
+                "size": [int(size[0]), int(size[1])],
+                "fps": fps,
+                "bit_depth": bit_depth,
+                "format": fmt_str,
+            })
+        return out
+    finally:
+        try:
+            picam2.close()
+        except Exception:
+            pass
+
+
 def select_sensor_and_main_size(picam2: Any, max_stream_size: tuple[int, int]) -> tuple[tuple[int, int], tuple[int, int]]:
     """
     Given a Picamera2 instance and a maximum stream size (width, height),
@@ -74,23 +120,60 @@ class Picamera2Source(VideoStreamTrack):
 
     kind = "video"
 
-    def __init__(self, camera_index: int) -> None:
+    def __init__(self, camera_index: int, sensor_mode_index: int | None = None) -> None:
         super().__init__()
         if Picamera2 is None:
             raise RuntimeError("picamera2 is not installed")
         self._camera_index = camera_index
+        self._sensor_mode_index = sensor_mode_index
         self._picam2: Optional[Any] = None
         self._frame_queue: queue.Queue = queue.Queue(maxsize=2)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._started = False
 
+    def set_camera_index(self, camera_index: int) -> None:
+        self._camera_index = camera_index
+
+    def set_sensor_mode_index(self, sensor_mode_index: int | None) -> None:
+        self._sensor_mode_index = sensor_mode_index
+
+    def get_options(self) -> dict:
+        return {
+            "camera_index": self._camera_index,
+            "sensor_mode_index": self._sensor_mode_index,
+        }
+
     def _capture_loop(self) -> None:
         try:
             self._picam2 = Picamera2(self._camera_index)
-            sensor_size, main_size = select_sensor_and_main_size(
-                self._picam2, _MAX_STREAM_SIZE
-            )
+            sensor_size: tuple[int, int]
+            main_size: tuple[int, int]
+
+            # If a specific sensor mode was requested, honor its size and
+            # scale main stream to fit within _MAX_STREAM_SIZE while
+            # preserving aspect ratio (mirrors record_video() logic).
+            modes = getattr(self._picam2, "sensor_modes", None) or []
+            mode = None
+            if (
+                self._sensor_mode_index is not None
+                and 0 <= self._sensor_mode_index < len(modes)
+            ):
+                mode = modes[self._sensor_mode_index]
+
+            if mode is not None:
+                sensor_size = tuple(mode.get("size", (640, 480)))  # type: ignore[assignment]
+                w, h = sensor_size
+                max_w, max_h = _MAX_STREAM_SIZE
+                if w <= 0 or h <= 0:
+                    main_size = (640, 480)
+                else:
+                    r = min(max_w / w, max_h / h, 1.0)
+                    main_size = (int(w * r), int(h * r))
+            else:
+                sensor_size, main_size = select_sensor_and_main_size(
+                    self._picam2, _MAX_STREAM_SIZE
+                )
 
             config = self._picam2.create_preview_configuration(
                 main={"size": main_size},
@@ -113,6 +196,7 @@ class Picamera2Source(VideoStreamTrack):
             if self._picam2 is not None:
                 try:
                     self._picam2.stop()
+                    self._picam2.close()
                 except Exception:
                     pass
                 self._picam2 = None
@@ -148,9 +232,20 @@ class Picamera2Source(VideoStreamTrack):
 
     def stop(self) -> None:
         self._stop.set()
+        # Wait briefly for capture thread to exit and run its cleanup
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            try:
+                thread.join(timeout=2.0)
+            except Exception:
+                pass
         if self._picam2 is not None:
             try:
                 self._picam2.stop()
+            except Exception:
+                pass
+            try:
+                self._picam2.close()
             except Exception:
                 pass
             self._picam2 = None

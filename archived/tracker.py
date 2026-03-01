@@ -6,7 +6,6 @@ import cv2
 from ultralytics import YOLO  # type: ignore
 
 from . import config_loader as config
-from . import model as model_setup
 from . import video_source
 from . import video_output
 from . import report
@@ -46,8 +45,9 @@ def tracking_frames(
     Single loop: read frame -> track -> optionally draw -> yield (frame, results, model).
     Caller can aggregate stats (run_tracking) using model.names, or encode and stream (e.g. MJPEG).
     """
-    model = model_setup.load_model(model_key)
-    conf_val = model_setup.confidence_lvl(conf)
+    spec = config.models[model_key]
+    model = YOLO(spec["weights"])
+    conf_val = float(conf)
     target_ids = classes
 
     cap = video_source.load_video_source(video_source_spec)

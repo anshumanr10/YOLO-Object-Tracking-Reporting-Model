@@ -75,7 +75,7 @@ This document summarizes the actions, decisions, and outcomes from a chat sessio
 
 **Diagnosis performed:**
 1. Minimal PyTorch test: `python -c "import torch; x = torch.zeros(1,1); print('torch OK')"` → **Illegal instruction**
-2. Model load test: `from yolo.model import load_model; m = load_model()` → **Illegal instruction**
+2. Model load test: `from yolo import config_loader as c; c.load_config(); from ultralytics import YOLO; m = YOLO(c.models[c.defaults["model"]]["weights"])` → **Illegal instruction**
 3. Inference test: `m.track(np.zeros((480,640,3), dtype=np.uint8))` → **Illegal instruction**
 
 **Conclusion:** The crash occurs in **PyTorch itself** (even before model load or inference). Not a bug in the FastAPI/WebRTC/tracking code.

@@ -6,7 +6,6 @@ import cv2
 from ultralytics import YOLO  # type: ignore
 
 from . import config_loader as config
-from . import model as model_setup
 from . import video_output
 from . import report
 
@@ -39,6 +38,7 @@ def tracking_frames(
     classes: Optional[List[int]] = get_target_class_ids(),
     max_frames: Optional[int] = None,
     draw: bool = True,
+    model: Any = None,
 ) -> Generator[Tuple[Any, Any, Any], None, None]:
     """
     Single loop: consume frames from an existing stream -> track -> optionally draw
@@ -46,9 +46,12 @@ def tracking_frames(
 
     The frame_stream is typically provided by yolo.source_picamera.picamera2_frame_stream,
     but any generator yielding OpenCV BGR frames is acceptable.
+    If model is provided, it is used instead of loading from model_key.
     """
-    model = model_setup.load_model(model_key)
-    conf_val = model_setup.confidence_lvl(conf)
+    if model is None:
+        spec = config.models[model_key]
+        model = YOLO(spec["weights"])
+    conf_val = float(conf)
     target_ids = classes
 
     frame_count = 0

@@ -50,6 +50,9 @@ class TrackingVideoTrack(VideoStreamTrack):
         self._source_type = source_type
         self._camera_index = camera_index
         self._target_fps = target_fps
+        # For PiCamera sources, allow optional sensor mode selection.
+        # For non-PiCamera sources this is ignored.
+        self._sensor_mode_index: Optional[int] = None
         self._model_key = model_key
         self._conf = conf
         self._persist = persist
@@ -60,19 +63,78 @@ class TrackingVideoTrack(VideoStreamTrack):
         self._thread: Optional[threading.Thread] = None
         self._started = False
         self._pipeline_ready = False
+        self._model: Any = None  # Optional preloaded YOLO model (set by load_model())
+
+    def load_model(self) -> None:
+        """Load the current model (from config default or set_model_key) and cache on this instance."""
+        from yolo import config_loader as config
+        from ultralytics import YOLO
+
+        config.load_config()
+        model_key = self._model_key if self._model_key is not None else config.defaults["model"]
+        self._model = YOLO(config.models[model_key]["weights"])
+
+    def set_fps(self, fps: Optional[int]) -> None:
+        self._target_fps = fps
+
+    def set_model_key(self, model_key: Optional[str]) -> None:
+        self._model_key = model_key
+
+    def set_conf(self, conf: Optional[float]) -> None:
+        self._conf = conf
+
+    def set_persist(self, persist: Optional[bool]) -> None:
+        self._persist = persist
+
+    def set_tracker(self, tracker: Optional[str]) -> None:
+        self._tracker = tracker
+
+    def set_classes(self, classes: Optional[List[int]]) -> None:
+        """Set class filter by list of class IDs. Pass None for all classes."""
+        self._classes = classes
+
+    def set_source_type(self, source_type: str) -> None:
+        self._source_type = source_type
+
+    def set_camera_index(self, camera_index: int) -> None:
+        self._camera_index = camera_index
+
+    def set_sensor_mode_index(self, sensor_mode_index: Optional[int]) -> None:
+        self._sensor_mode_index = sensor_mode_index
+
+    def get_options(self) -> dict:
+        """Return current options for API/UI. Classes are returned as class names when available."""
+        from yolo import config_loader as config
+
+        config.load_config()
+        id_to_name = {v: k for k, v in (config.classifications or {}).items()}
+        class_names = None
+        if self._classes:
+            class_names = [id_to_name.get(i, str(i)) for i in self._classes]
+        return {
+            "source_type": self._source_type,
+            "camera_index": self._camera_index,
+            "sensor_mode_index": self._sensor_mode_index,
+            "target_fps": self._target_fps,
+            "model_key": self._model_key,
+            "conf": self._conf,
+            "persist": self._persist,
+            "tracker": self._tracker,
+            "classes": class_names,
+        }
 
     def _tracking_loop(self) -> None:
         try:
-            from yolo.tracker import tracking_frames
-            from yolo import model as model_setup
+            from yolo import config_loader as config
+            from yolo.tracker import tracking_frames, get_target_class_ids
 
+            config.load_config()
             print("[tracking] pipeline starting (loading model & camera)...", flush=True)
 
-            # Preload model so first frame is not delayed by 30–60s on Pi
-            model_key = self._model_key if self._model_key is not None else getattr(
-                model_setup, "_DEFAULT_MODEL", "yolov8n"
-            )
-            model_setup.load_model(model_key)
+            if self._model is None:
+                model_key = self._model_key if self._model_key is not None else config.defaults["model"]
+                from ultralytics import YOLO
+                self._model = YOLO(config.models[model_key]["weights"])
 
             if self._source_type == "PiCamera":
                 from yolo.source_picamera import picamera2_frame_stream
@@ -80,6 +142,8 @@ class TrackingVideoTrack(VideoStreamTrack):
                 stream_kwargs: dict = {"camera_index": self._camera_index}
                 if self._target_fps is not None:
                     stream_kwargs["target_fps"] = self._target_fps
+                if self._sensor_mode_index is not None:
+                    stream_kwargs["sensor_mode_index"] = self._sensor_mode_index
                 frame_stream = picamera2_frame_stream(**stream_kwargs)
             else:
                 from yolo.source_opencv import cv_frame_stream
@@ -90,17 +154,16 @@ class TrackingVideoTrack(VideoStreamTrack):
                     stream_kwargs["target_fps"] = self._target_fps
                 frame_stream = cv_frame_stream(**stream_kwargs)
 
-            track_kwargs: dict = {"frame_stream": frame_stream, "draw": True}
-            if self._model_key is not None:
-                track_kwargs["model_key"] = self._model_key
-            if self._conf is not None:
-                track_kwargs["conf"] = self._conf
-            if self._persist is not None:
-                track_kwargs["persist"] = self._persist
-            if self._tracker is not None:
-                track_kwargs["tracker"] = self._tracker
-            if self._classes is not None:
-                track_kwargs["classes"] = self._classes
+            track_kwargs: dict = {
+                "frame_stream": frame_stream,
+                "draw": True,
+                "model": self._model,
+                "model_key": self._model_key if self._model_key is not None else config.defaults["model"],
+                "conf": float(self._conf) if self._conf is not None else float(config.defaults.get("conf", 0.5)),
+                "persist": self._persist if self._persist is not None else bool(config.defaults.get("tracking", True)),
+                "tracker": self._tracker or "bytetrack.yaml",
+                "classes": self._classes if self._classes is not None else get_target_class_ids(),
+            }
 
             last_stats_time = time.monotonic()
             frame_count = 0
@@ -173,4 +236,12 @@ class TrackingVideoTrack(VideoStreamTrack):
 
     def stop(self) -> None:
         self._stop.set()
+        # Wait briefly for tracking thread to exit so underlying generators
+        # (Picamera2 / OpenCV) can run their cleanup and release devices.
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            try:
+                thread.join(timeout=5.0)
+            except Exception:
+                pass
         super().stop()
