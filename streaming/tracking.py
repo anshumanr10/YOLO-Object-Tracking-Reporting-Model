@@ -10,7 +10,7 @@ import queue
 import threading
 import time
 from collections import Counter
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional
 
 import cv2
 import numpy as np
@@ -21,7 +21,6 @@ from input_sources.resolver import (
     InputSourceSpec,
     api_options_from_spec,
     make_frame_stream,
-    patch_source_spec,
 )
 
 try:
@@ -65,6 +64,10 @@ class TrackingVideoTrack(VideoStreamTrack):
         self._pipeline_ready = False
         self._model: Any = None
 
+    @property
+    def source_spec(self) -> InputSourceSpec:
+        return self._source_spec
+
     def load_model(self) -> None:
         """Load the current model (from config default or set_model_key) and cache on this instance."""
         from yolo import config_loader as config
@@ -73,34 +76,6 @@ class TrackingVideoTrack(VideoStreamTrack):
         config.load_config()
         model_key = self._model_key if self._model_key is not None else config.defaults["model"]
         self._model = YOLO(config.models[model_key]["weights"])
-
-    def set_fps(self, fps: Optional[int]) -> None:
-        self._target_fps = fps
-
-    def set_model_key(self, model_key: Optional[str]) -> None:
-        self._model_key = model_key
-
-    def set_conf(self, conf: Optional[float]) -> None:
-        self._conf = conf
-
-    def set_persist(self, persist: Optional[bool]) -> None:
-        self._persist = persist
-
-    def set_tracker(self, tracker: Optional[str]) -> None:
-        self._tracker = tracker
-
-    def set_classes(self, classes: Optional[List[int]]) -> None:
-        """Set class filter by list of class IDs. Pass None for all classes."""
-        self._classes = classes
-
-    def set_source_type(self, source_type: str) -> None:
-        self._source_spec = patch_source_spec(self._source_spec, source_type=source_type)
-
-    def set_camera_index(self, camera_index: Union[int, str]) -> None:
-        self._source_spec = patch_source_spec(self._source_spec, camera_index=camera_index)
-
-    def set_sensor_mode_index(self, sensor_mode_index: Optional[int]) -> None:
-        self._source_spec = patch_source_spec(self._source_spec, sensor_mode_index=sensor_mode_index)
 
     def get_options(self) -> dict:
         """Return current options for API/UI. Classes are returned as class names when available."""
