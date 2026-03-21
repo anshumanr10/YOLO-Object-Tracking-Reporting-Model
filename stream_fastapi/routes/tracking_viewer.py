@@ -57,7 +57,8 @@ async def tracking_patch_options(request: Request, response: Response):
     if "source_type" in body:
         track.set_source_type(str(body["source_type"]))
     if "camera_index" in body:
-        track.set_camera_index(int(body["camera_index"]))
+        v = body["camera_index"]
+        track.set_camera_index(v if isinstance(v, str) else int(v))
     if "sensor_mode_index" in body:
         v = body["sensor_mode_index"]
         track.set_sensor_mode_index(int(v) if v is not None else None)

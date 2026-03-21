@@ -46,20 +46,19 @@ def get_session(session_id: str) -> Dict[str, Any]:
 
 def get_tracking_track(session_id: str):
     """Get or create the TrackingVideoTrack for this session. Returns the instance."""
-    from pi.tracking_source import TrackingVideoTrack
+    from streaming.tracking import TrackingVideoTrack
+    from input_sources.resolver import resolve_source_spec
     from yolo import config_loader as config
 
     config.load_config()
     session = get_session(session_id)
     if "tracking" not in session or session["tracking"] is None:
-        source_cfg = config.defaults.get("source") or {}
-        default_source_type = source_cfg.get("type") or "PiCamera"
-        default_camera_index = CAMERA_INDEX
-        if isinstance(source_cfg.get("camera_index"), (int, float)):
-            default_camera_index = int(source_cfg["camera_index"])
+        source_spec = resolve_source_spec(
+            config.defaults.get("source") or {},
+            default_device_index=CAMERA_INDEX,
+        )
         session["tracking"] = TrackingVideoTrack(
-            source_type=default_source_type,
-            camera_index=default_camera_index,
+            source_spec=source_spec,
             target_fps=int(config.defaults.get("fps", 30)),
             model_key=config.defaults.get("model"),
             conf=float(config.defaults.get("conf", 0.5)),

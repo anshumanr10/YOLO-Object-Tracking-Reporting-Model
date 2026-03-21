@@ -44,8 +44,8 @@ def tracking_frames(
     Single loop: consume frames from an existing stream -> track -> optionally draw
     -> yield (frame, results, model).
 
-    The frame_stream is typically provided by yolo.source_picamera.picamera2_frame_stream,
-    but any generator yielding OpenCV BGR frames is acceptable.
+    The frame_stream is provided by upstream input adapters and should yield
+    OpenCV-compatible BGR frames.
     If model is provided, it is used instead of loading from model_key.
     """
     if model is None:
@@ -147,7 +147,7 @@ def run_tracking(
 
 
 if __name__ == "__main__":
-    from .source_picamera import picamera2_frame_stream
+    from input_sources.source_picamera import picamera2_frame_stream
 
     print(f"Running: {Path(__file__).resolve()}")
     stream = picamera2_frame_stream()
