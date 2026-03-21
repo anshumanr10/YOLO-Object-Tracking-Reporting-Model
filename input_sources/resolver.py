@@ -18,6 +18,28 @@ class InputSourceSpec:
     sensor_mode_index: Optional[int] = None
 
 
+def source_spec_from_flat(
+    flat: Mapping[str, Any],
+    *,
+    default_device_index: int = 0,
+) -> InputSourceSpec:
+    """
+    Build InputSourceSpec from a flat options dict (API / merged session state).
+
+    Expected keys: source_type, camera_index, optional sensor_mode_index, url, values.
+    """
+    cfg: dict[str, Any] = {"type": flat.get("source_type") or "PiCamera"}
+    if "camera_index" in flat and flat["camera_index"] is not None:
+        cfg["camera_index"] = flat["camera_index"]
+    if "sensor_mode_index" in flat:
+        cfg["sensor_mode_index"] = flat["sensor_mode_index"]
+    if flat.get("url"):
+        cfg["url"] = flat["url"]
+    if flat.get("values") is not None:
+        cfg["values"] = flat["values"]
+    return resolve_source_spec(cfg, default_device_index=default_device_index)
+
+
 def resolve_source_spec(source_cfg: Mapping[str, Any], *, default_device_index: int = 0) -> InputSourceSpec:
     """Resolve defaults.yaml source config into a normalized source spec."""
     src_type = str(source_cfg.get("type") or "PiCamera").strip() or "PiCamera"

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tracking (network URL)</title>
+  <link rel="stylesheet" href="../static/css/main.css">
+</head>
+<body>
+  <h1>Tracking — network stream</h1>
+  <p id="status">Starting UI…</p>
+  <p class="hint">Uses <code>POST /tracking/rtsp</code> with a URL OpenCV can open (RTSP, RTMP, HTTP, file path, etc.). Input is not taken from <code>defaults.yaml</code>.</p>
+
+  <div class="controls">
+    <label>Stream URL:
+      <input type="text" id="rtspUrlInput" placeholder="rtsp://user:pass@host:554/stream" size="56" autocomplete="off">
+    </label>
+    <button id="rtspConnectBtn" type="button">Connect</button>
+  </div>
+  <div class="controls">
+    <label>Model: <select id="modelSelect"></select></label>
+    <label>FPS: <input type="number" id="fpsInput" min="1" max="60" step="1" style="width:4em"></label>
+    <label>Confidence: <input type="number" id="confInput" min="0" max="1" step="0.05" style="width:4em"></label>
+  </div>
+  <div class="controls">
+    <label>Classes: <select id="classesSelect" multiple size="3"></select></label>
+    <small>(hold Ctrl/Cmd to select multiple; empty = all)</small>
+  </div>
+  <div class="controls">
+    <button id="startBtn" disabled>Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+  </div>
+  <video id="video" autoplay playsinline muted></video>
+  <!-- Dedicated JS (not stream.js) so this page works even if stream.js fails to load. Path is relative to this page URL so /prefix/tracking-rtsp still resolves /prefix/static/... -->
+  <script>
+    (function () {
+      var jsUrl = new URL("../static/js/tracking_rtsp.js", window.location.href).href;
+      var s = document.createElement("script");
+      s.src = jsUrl;
+      s.async = false;
+      s.onerror = function () {
+        console.error("[tracking-rtsp] failed to load script:", jsUrl);
+        var el = document.getElementById("status");
+        if (el) {
+          el.textContent =
+            "Could not load " +
+            jsUrl +
+            ". Open this page through the FastAPI app (e.g. http://127.0.0.1:8000/tracking-rtsp), not as a local file, and check the Network tab.";
+        }
+      };
+      s.onload = function () {
+        try {
+          if (typeof window.trackingRtspPage !== "function") {
+            throw new Error("tracking_rtsp.js loaded but window.trackingRtspPage is missing (syntax error in file?)");
+          }
+          window.trackingRtspPage({
+            wsPath: "/ws-tracking",
+            rtspOptionsUrl: "/tracking/rtsp/options",
+            postRtspUrl: "/tracking/rtsp",
+            patchOptionsUrl: "/tracking/options",
+            loadModel: { url: "/tracking/load-model", readyText: "Ready. Click Start." },
+          });
+        } catch (err) {
+          console.error("[tracking-rtsp] bootstrap failed", err);
+          var el = document.getElementById("status");
+          if (el) el.textContent = "Script error: " + (err && err.message ? err.message : err);
+        }
+      };
+      document.head.appendChild(s);
+    })();
+  </script>
+</body>
+</html>
