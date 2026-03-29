@@ -24,9 +24,27 @@ function streamPage(config) {
   let pc = null;
   let started = false;
 
+  var SESSION_STORAGE_KEY = "yolo_session_id";
+
+  function storeSessionId(opts) {
+    if (opts && opts.session_id) {
+      try {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, opts.session_id);
+      } catch (e) {}
+    }
+  }
+
   function wsUrl(path) {
-    var p = (path && path.charAt(0) === "/") ? path : "/" + (path || "");
-    return (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + p;
+    var p = path && path.charAt(0) === "/" ? path : "/" + (path || "");
+    var base = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + p;
+    var sid = null;
+    try {
+      sid = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    } catch (e) {}
+    if (sid) {
+      base += (base.indexOf("?") >= 0 ? "&" : "?") + "session_id=" + encodeURIComponent(sid);
+    }
+    return base;
   }
 
   function setButtons() {
@@ -41,12 +59,18 @@ function streamPage(config) {
     status.textContent = "Stopped.";
     try {
       if (video.srcObject) {
-        video.srcObject.getTracks().forEach(function(t) { t.stop(); });
+        video.srcObject.getTracks().forEach(function (t) {
+          t.stop();
+        });
       }
     } catch (e) {}
     video.srcObject = null;
-    try { if (pc) pc.close(); } catch (e) {}
-    try { if (ws) ws.close(); } catch (e) {}
+    try {
+      if (pc) pc.close();
+    } catch (e) {}
+    try {
+      if (ws) ws.close();
+    } catch (e) {}
     pc = null;
     ws = null;
   }
@@ -58,7 +82,7 @@ function streamPage(config) {
     status.textContent = "Connecting...";
 
     pc = new RTCPeerConnection();
-    pc.ontrack = function(e) {
+    pc.ontrack = function (e) {
       status.textContent = "Starting video stream...";
       video.srcObject = new MediaStream([e.track]);
       function onFirstFrame() {
@@ -68,31 +92,34 @@ function streamPage(config) {
       }
       video.addEventListener("loadeddata", onFirstFrame);
       video.addEventListener("playing", onFirstFrame);
-      video.play().catch(function() {});
+      video.play().catch(function () {});
     };
-    pc.oniceconnectionstatechange = function() {
+    pc.oniceconnectionstatechange = function () {
       if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed") {
         status.textContent = "Connection " + pc.iceConnectionState;
       }
     };
 
     ws = new WebSocket(wsUrl(config.wsPath));
-    ws.onopen = function() {
+    ws.onopen = function () {
       status.textContent = "WebSocket connected, negotiating...";
       pc.addTransceiver("video", { direction: "recvonly" });
-      pc.createOffer().then(function(offer) {
-        return pc.setLocalDescription(offer);
-      }).then(function() {
-        ws.send(JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp }));
-      }).catch(function(e) {
-        status.textContent = "Error: " + e.message;
-      });
+      pc.createOffer()
+        .then(function (offer) {
+          return pc.setLocalDescription(offer);
+        })
+        .then(function () {
+          ws.send(JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp }));
+        })
+        .catch(function (e) {
+          status.textContent = "Error: " + e.message;
+        });
     };
 
-    ws.onmessage = function(ev) {
+    ws.onmessage = function (ev) {
       var msg = JSON.parse(ev.data);
       if (msg.type === "answer" && msg.sdp) {
-        pc.setRemoteDescription(new RTCSessionDescription(msg)).catch(function() {});
+        pc.setRemoteDescription(new RTCSessionDescription(msg)).catch(function () {});
       } else if (msg.type === "ice" && msg.candidate) {
         try {
           pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
@@ -100,11 +127,11 @@ function streamPage(config) {
       }
     };
 
-    ws.onclose = function() {
+    ws.onclose = function () {
       status.textContent = "WebSocket closed";
       if (started) stopStream();
     };
-    ws.onerror = function() {
+    ws.onerror = function () {
       status.textContent = "WebSocket error";
     };
   }
@@ -123,53 +150,104 @@ function streamPage(config) {
     fetch("/api/stream/options", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).catch(function(e) { console.error("PATCH stream options", e); });
+      body: JSON.stringify(body),
+    }).catch(function (e) {
+      console.error("PATCH stream options", e);
+    });
   }
 
-  function patchTrackingOptions() {
-    if (!optionsUrl) return;
+  function buildTrackingPatchBody() {
     var body = {};
     if (cameraSelect && cameraSelect.value !== "") body.camera_index = parseInt(cameraSelect.value, 10);
     if (modeSelect && modeSelect.value !== "") {
-      var v = modeSelect.value;
-      body.sensor_mode_index = v === "" ? null : parseInt(v, 10);
+      var v0 = modeSelect.value;
+      body.sensor_mode_index = v0 === "" ? null : parseInt(v0, 10);
     }
     if (modelSelect && modelSelect.value !== "") body.model_key = modelSelect.value;
     if (fpsInput && fpsInput.value !== "") body.target_fps = parseInt(fpsInput.value, 10);
     if (confInput && confInput.value !== "") body.conf = parseFloat(confInput.value);
     if (classesSelect) {
-      var selected = [].slice.call(classesSelect.selectedOptions).map(function(o) { return o.value; });
+      var selected = [].slice.call(classesSelect.selectedOptions).map(function (o) {
+        return o.value;
+      });
       body.classes = selected.length ? selected : null;
     }
+    return body;
+  }
+
+  function patchTrackingOptions() {
+    if (!optionsUrl) return;
+    var body = buildTrackingPatchBody();
     fetch(optionsUrl, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).then(function(res) { return res.json(); }).catch(function(e) { console.error("PATCH tracking options", e); });
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    })
+      .then(function (res) {
+        if (!res.ok) return res.text().then(function (t) {
+          throw new Error(t || res.statusText);
+        });
+        return res.json();
+      })
+      .then(function (opts) {
+        storeSessionId(opts);
+      })
+      .catch(function (e) {
+        console.error("PATCH tracking options", e);
+        if (status) status.textContent = "Failed to apply settings: " + (e.message || e);
+      });
+  }
+
+  function loadModesForCamera(cameraIndex) {
+    if (!modeSelect) return Promise.resolve();
+    modeSelect.innerHTML = "";
+    return fetch("/api/cameras/" + encodeURIComponent(cameraIndex) + "/modes")
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
+        var modes = data.modes || [];
+        modes.forEach(function (m) {
+          var size = m.size || [0, 0];
+          var fps = m.fps != null && typeof m.fps.toFixed === "function" ? m.fps.toFixed(2) : m.fps || "0";
+          var label = m.index + ": " + size[0] + "x" + size[1] + " @" + fps + " fps (" + (m.format || "") + ")";
+          var opt = document.createElement("option");
+          opt.value = String(m.index);
+          opt.textContent = label;
+          modeSelect.appendChild(opt);
+        });
+      })
+      .catch(function (e) {
+        console.error("Failed to load sensor modes", e);
+      });
   }
 
   function runLoadModel() {
     if (!loadModelConfig) return Promise.resolve();
     status.textContent = "Loading model...";
     return fetch(loadModelConfig.url)
-      .then(function(res) {
+      .then(function (res) {
         if (!res.ok) throw new Error("Load model failed");
         status.textContent = loadModelConfig.readyText;
         startBtn.disabled = false;
       })
-      .catch(function(e) {
+      .catch(function (e) {
         status.textContent = "Load model error: " + e.message;
       });
   }
 
   if (optionsUrl) {
-    fetch(optionsUrl)
-      .then(function(res) { return res.json(); })
-      .then(function(opts) {
+    fetch(optionsUrl, { credentials: "same-origin" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("GET " + optionsUrl + " failed");
+        return res.json();
+      })
+      .then(function (opts) {
+        storeSessionId(opts);
         if (modelSelect && opts.available_models) {
           modelSelect.innerHTML = "";
-          opts.available_models.forEach(function(k) {
+          opts.available_models.forEach(function (k) {
             var opt = document.createElement("option");
             opt.value = k;
             opt.textContent = k;
@@ -181,7 +259,7 @@ function streamPage(config) {
         if (confInput && opts.conf != null) confInput.value = opts.conf;
         if (classesSelect && opts.available_classes) {
           classesSelect.innerHTML = "";
-          opts.available_classes.forEach(function(name) {
+          opts.available_classes.forEach(function (name) {
             var opt = document.createElement("option");
             opt.value = name;
             opt.textContent = name;
@@ -189,18 +267,24 @@ function streamPage(config) {
             classesSelect.appendChild(opt);
           });
         }
+
         if (cameraSelect && opts.camera_index != null) {
           cameraSelect.value = String(opts.camera_index);
           if (modeSelect) {
-            loadModesForCamera(opts.camera_index).then(function() {
-              if (opts.sensor_mode_index != null && opts.sensor_mode_index !== "")
+            return loadModesForCamera(opts.camera_index).then(function () {
+              if (opts.sensor_mode_index != null && opts.sensor_mode_index !== "" && modeSelect) {
                 modeSelect.value = String(opts.sensor_mode_index);
+              }
             });
           }
         }
       })
-      .then(function() { return runLoadModel(); })
-      .catch(function(e) { console.error("GET tracking options", e); });
+      .then(function () {
+        return runLoadModel();
+      })
+      .catch(function (e) {
+        console.error("GET tracking options", e);
+      });
 
     if (modelSelect) modelSelect.addEventListener("change", patchTrackingOptions);
     if (fpsInput) fpsInput.addEventListener("change", patchTrackingOptions);
@@ -210,11 +294,13 @@ function streamPage(config) {
 
   if (cameraSelect && modeSelect) {
     var camerasPromise = fetch("/api/cameras")
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
         var cams = data.cameras || [];
         cameraSelect.innerHTML = "";
-        cams.forEach(function(cam) {
+        cams.forEach(function (cam) {
           var opt = document.createElement("option");
           opt.value = String(cam.index);
           opt.textContent = cam.index + ": " + cam.model + " (" + cam.location + ")";
@@ -225,52 +311,44 @@ function streamPage(config) {
           loadModesForCamera(cams[0].index);
         }
       })
-      .catch(function(e) { console.error("Failed to load cameras", e); });
+      .catch(function (e) {
+        console.error("Failed to load cameras", e);
+      });
 
     if (isRawStream) {
-      camerasPromise.then(function() {
-        return fetch("/api/stream/options").then(function(res) { return res.json(); });
-      }).then(function(opts) {
-        if (!opts || opts.camera_index == null) return;
-        if (cameraSelect.querySelector('option[value="' + opts.camera_index + '"]')) {
-          cameraSelect.value = String(opts.camera_index);
-          loadModesForCamera(opts.camera_index).then(function() {
-            if (opts.sensor_mode_index != null && modeSelect.querySelector('option[value="' + opts.sensor_mode_index + '"]'))
-              modeSelect.value = String(opts.sensor_mode_index);
+      camerasPromise
+        .then(function () {
+          return fetch("/api/stream/options").then(function (res) {
+            return res.json();
           });
-        }
-      }).catch(function() {});
+        })
+        .then(function (opts) {
+          if (!opts || opts.camera_index == null) return;
+          if (cameraSelect.querySelector('option[value="' + opts.camera_index + '"]')) {
+            cameraSelect.value = String(opts.camera_index);
+            loadModesForCamera(opts.camera_index).then(function () {
+              if (
+                opts.sensor_mode_index != null &&
+                modeSelect.querySelector('option[value="' + opts.sensor_mode_index + '"]')
+              )
+                modeSelect.value = String(opts.sensor_mode_index);
+            });
+          }
+        })
+        .catch(function () {});
     }
 
-    cameraSelect.addEventListener("change", function() {
+    cameraSelect.addEventListener("change", function () {
       var idx = parseInt(cameraSelect.value, 10);
       if (!isNaN(idx)) loadModesForCamera(idx);
       if (isRawStream) patchStreamOptions();
       else if (optionsUrl) patchTrackingOptions();
     });
-    modeSelect.addEventListener("change", function() {
+    modeSelect.addEventListener("change", function () {
       if (isRawStream) patchStreamOptions();
       else if (optionsUrl) patchTrackingOptions();
     });
   }
-
-  function loadModesForCamera(cameraIndex) {
-    if (!modeSelect) return Promise.resolve();
-    modeSelect.innerHTML = "";
-    return fetch("/api/cameras/" + encodeURIComponent(cameraIndex) + "/modes")
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        var modes = data.modes || [];
-        modes.forEach(function(m) {
-          var size = m.size || [0, 0];
-          var fps = m.fps != null && typeof m.fps.toFixed === "function" ? m.fps.toFixed(2) : (m.fps || "0");
-          var label = m.index + ": " + size[0] + "x" + size[1] + " @" + fps + " fps (" + (m.format || "") + ")";
-          var opt = document.createElement("option");
-          opt.value = String(m.index);
-          opt.textContent = label;
-          modeSelect.appendChild(opt);
-        });
-      })
-      .catch(function(e) { console.error("Failed to load sensor modes", e); });
-  }
 }
+
+window.streamPage = streamPage;

@@ -2,10 +2,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from webrtc import handle_webrtc_connection
 
-from pi.picamera2_source import Picamera2Source
-from pi.tracking_source import TrackingVideoTrack
-
-from ..config import CAMERA_INDEX
 from ..session import get_camera_track, get_session_id_from_websocket, get_tracking_track
 
 
