@@ -1,8 +1,0 @@
-### System-level dependencies for YOLO WebRTC project (Python 3.13)
-### Run these on a fresh Raspberry Pi OS install before creating the venv.
-
-sudo apt install -y \
-  python3-torch python3-torchvision python3-torchaudio \
-  python3-libcamera python3-picamera2 \
-  libcamera-apps libcamera-dev \
-  libcap-dev libgl1 libglib2.0-0 pkg-config

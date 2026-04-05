@@ -1,0 +1,104 @@
+# YOLO.track() / YOLO.predict() — optional kwargs (Raspberry Pi config.txt style).
+# Uncomment only the `key: value` line for each setting you want; keep the description line as a # comment (YAML needs one mapping root).
+# If every assignment stays commented, YAML loaders typically yield null — treat as “no overrides”.
+#
+# ``stream`` is fixed False in YOLOTracker.track_frame (per-frame list Results).
+
+# If true, reuse tracker state across separate .track() calls on the same model instance.
+# persist: false
+
+# Inference batch size; track() defaults to 1 for video-style processing.
+# batch: 1
+
+# Inference image size (int or [h, w]); affects speed and small-object detail.
+# imgsz: 640
+
+# If true, write Ultralytics run outputs (images/videos) under project/name (True when using yolo CLI).
+# save: false
+
+# Empty = auto: first CUDA GPU if available, else MPS (Apple) or CPU; or set cpu, 0, cuda:0, etc.
+# device:
+
+# Top-level folder for saved runs when save* options are enabled.
+# project:
+
+# Subfolder/run name under project for saved outputs.
+# name:
+
+# If false, increment run directory when name collides; if true, reuse the path.
+# exist_ok: false
+
+# Ultralytics logging verbosity during predict/track.
+# verbose: true
+
+# Rectangular batching/letterbox strategy for predict (Ultralytics default on for predict path).
+# rect: true
+
+# Confidence threshold before NMS; track() uses 0.1 when conf is not passed to .track().
+# conf: 0.1
+
+# IoU threshold for NMS when merging overlapping boxes.
+# iou: 0.7
+
+# Cap on number of detections per image after NMS.
+# max_det: 300
+
+# FP16 inference where supported (faster on GPU, slightly different numerics).
+# half: false
+
+# Use OpenCV DNN backend for ONNX inference when applicable.
+# dnn: false
+
+# For video sources, run detection every Nth frame (1 = every frame).
+# vid_stride: 1
+
+# For streams: false keeps latest frame for low latency; true buffers more frames.
+# stream_buffer: false
+
+# Extra visualization / debug paths inside the predictor (not your app UI).
+# visualize: false
+
+# Test-time augmentation during inference (slower, sometimes more stable detections).
+# augment: false
+
+# If true, NMS ignores class id when suppressing overlaps.
+# agnostic_nms: false
+
+# Filter by class id(s): int or list[int]; omit/null = all classes.
+# classes:
+
+# Higher-res masks for segment models when supported.
+# retina_masks: false
+
+# Optional layer indices to return feature embeddings (model/task dependent).
+# embed:
+
+# If true, open an interactive window for frames/video where the environment supports it.
+# show: false
+
+# Save individual frames from video predictions when save pipeline is active.
+# save_frames: false
+
+# Save detection lines to .txt files in the run directory.
+# save_txt: false
+
+# Include confidence in saved txt labels.
+# save_conf: false
+
+# Save cropped detection regions to disk.
+# save_crop: false
+
+# Draw class names on saved/plotted output when Ultralytics renders boxes.
+# show_labels: true
+
+# Draw confidence scores on rendered output.
+# show_conf: true
+
+# Draw bounding boxes on rendered output.
+# show_boxes: true
+
+# Box line width in pixels; null lets Ultralytics scale from image size.
+# line_width:
+
+# Tracker config file (e.g. bytetrack.yaml or botsort.yaml) for .track().
+# tracker: botsort.yaml

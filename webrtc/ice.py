@@ -1,8 +1,6 @@
-"""
-ICE candidate serialization and parsing for WebRTC signaling.
-Browser and server exchange candidates as JSON; this module converts
-to/from aiortc RTCIceCandidate.
-"""
+"""ICE candidate JSON ↔ aiortc (browser signaling shape)."""
+
+from __future__ import annotations
 
 from typing import Any
 
@@ -10,12 +8,7 @@ from aiortc.sdp import candidate_to_sdp
 
 
 def ice_candidate_to_dict(candidate: Any) -> dict[str, Any]:
-    """
-    Serialize aiortc RTCIceCandidate for the browser.
-
-    Browser-side RTCIceCandidateInit.candidate expects a string that starts with
-    "candidate:" (NOT "a=candidate:").
-    """
+    """Serialize server ICE candidate for the browser (``candidate:`` SDP fragment)."""
     sdp = "candidate:" + candidate_to_sdp(candidate)
     return {
         "candidate": sdp,
@@ -25,13 +18,7 @@ def ice_candidate_to_dict(candidate: Any) -> dict[str, Any]:
 
 
 def parse_ice_candidate_from_message(msg: dict[str, Any]) -> Any | None:
-    """
-    Parse client ICE candidate from a signaling message payload.
-
-    msg is the "candidate" object from {"type": "ice", "candidate": {...}}.
-    Returns an RTCIceCandidate for pc.addIceCandidate(), or None to signal
-    end-of-candidates (addIceCandidate(None)).
-    """
+    """Build ``RTCIceCandidate`` from browser ``RTCIceCandidateInit`` dict, or ``None``."""
     from aiortc import RTCIceCandidate
     from aiortc.sdp import candidate_from_sdp
 

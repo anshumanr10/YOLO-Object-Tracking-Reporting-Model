@@ -1,7 +1,4 @@
-"""
-WebRTC (aiortc) package: signaling over WebSocket and connection handling.
-Source-agnostic: callers supply a track factory that returns a VideoStreamTrack.
-"""
+"""LAN browser WebRTC: WebSocket signaling + single outbound video track."""
 
 from webrtc.connection import handle_webrtc_connection
 

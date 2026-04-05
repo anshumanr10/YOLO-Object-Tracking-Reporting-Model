@@ -81,7 +81,7 @@ function streamPage(config) {
     setButtons();
     status.textContent = "Connecting...";
 
-    pc = new RTCPeerConnection();
+    pc = new RTCPeerConnection({ iceServers: [] });
     pc.ontrack = function (e) {
       status.textContent = "Starting video stream...";
       video.srcObject = new MediaStream([e.track]);
