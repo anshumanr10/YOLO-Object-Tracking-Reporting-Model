@@ -32,6 +32,12 @@ dist/
 Thumbs.db
 *.log
 
+# Windows "downloaded from internet" marker (sometimes appears as a sibling file)
+*Zone.Identifier
+
+# Resilio / other sync sidecar copies
+*.rsls
+
 # Local media artefacts
 *.mp4
 
