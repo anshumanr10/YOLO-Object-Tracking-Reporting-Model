@@ -1,0 +1,20 @@
+# Cross-platform: store text as LF in the repo and check out as LF on all OSes.
+# Prevents whole-tree "changed" noise from CRLF vs LF when moving between Windows/macOS/Linux.
+* text=auto eol=lf
+
+# Binaries — do not alter line endings or merge as text
+*.pt binary
+*.pth binary
+*.onnx binary
+*.pkl binary
+*.bin binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.mp4 binary
+*.pdf binary
